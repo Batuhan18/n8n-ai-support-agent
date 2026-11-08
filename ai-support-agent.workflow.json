@@ -1,0 +1,605 @@
+{
+  "name": "AI Customer Support Agent – Gmail → Knowledge Base → Reply / Draft / Escalate",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "q": "in:inbox -category:promotions -category:social"
+        },
+        "options": {}
+      },
+      "id": "16177076-a1a9-4699-b493-5e516e75a9b5",
+      "name": "Gmail: New Support E-mail",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ab3192e7-fcaf-4c8f-86ae-fbfb527af037",
+              "name": "company_name",
+              "type": "string",
+              "value": "Acme Store"
+            },
+            {
+              "id": "8666f5a3-5e06-499e-b02a-0a754bd9f870",
+              "name": "company_description",
+              "type": "string",
+              "value": "We sell eco-friendly home products online and ship across Europe."
+            },
+            {
+              "id": "59065ff9-a675-4fe9-b591-0fa150b61389",
+              "name": "tone",
+              "type": "string",
+              "value": "Friendly, concise and professional. No emojis."
+            },
+            {
+              "id": "c0d75e1b-67c4-45cf-abf0-9461f93da51c",
+              "name": "response_time",
+              "type": "string",
+              "value": "one business day"
+            },
+            {
+              "id": "c66a4afa-ce46-4fba-94c0-434115416898",
+              "name": "signature",
+              "type": "string",
+              "value": "Acme Store Support Team"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "bd4a0af7-ffb2-49e9-b389-201d16bbc5ef",
+      "name": "⚙️ Support Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ===== CONFIG =====\nconst CONFIG = {\n  ownDomains: ['yourcompany.com'],   // never answer your own team's e-mails\n};\n\nconst from = ($json.from && $json.from.value && $json.from.value[0]) || {};\nconst address = String(from.address || '').toLowerCase();\nconst headers = JSON.stringify($json.headers || {}).toLowerCase();\n\n// keep only the newest message, drop the quoted thread and signatures\nconst raw = String($json.text || $json.textPlain || '').replace(/\\r/g, '');\nconst cutMarkers = [\n  /^on .+wrote:\\s*$/im, /^-{2,}\\s*original message\\s*-{2,}/im, /^from: .+$/im, /^sent from my /im,\n  /^.+tarihinde .+yazdı:\\s*$/im, /^am .+schrieb .+:\\s*$/im, /^el .+escribió:\\s*$/im, /^le .+a écrit\\s*:\\s*$/im,\n];\nlet body = raw;\nfor (const re of cutMarkers) { const m = body.match(re); if (m && m.index > 0) body = body.slice(0, m.index); }\nbody = body.split('\\n').filter(l => !l.trim().startsWith('>')).join('\\n').replace(/\\n{3,}/g, '\\n\\n').trim();\n\nconst skipReasons = [];\nif (!address) skipReasons.push('no sender');\nif (/(no-?reply|do-?not-?reply|mailer-daemon|postmaster|notifications?@|bounce)/i.test(address)) skipReasons.push('automated sender');\nif (/auto-submitted: auto-|x-autoreply|x-autorespond|precedence: (bulk|list|junk)/i.test(headers)) skipReasons.push('auto-reply / bulk mail');\nif (/list-unsubscribe/i.test(headers)) skipReasons.push('newsletter');\nif (CONFIG.ownDomains.some(d => address.endsWith('@' + d))) skipReasons.push('internal e-mail');\nif (!body) skipReasons.push('empty body');\n\nreturn {\n  json: {\n    message_id: $json.id,\n    thread_id: $json.threadId,\n    received_at: new Date().toISOString(),\n    customer_email: address,\n    customer_name: from.name || '',\n    customer_domain: address.split('@')[1] || '',\n    subject: String($json.subject || '(no subject)'),\n    body: body.slice(0, 6000),\n    should_process: skipReasons.length === 0,\n    skip_reason: skipReasons.join(', '),\n  },\n};\n"
+      },
+      "id": "4c6bd394-3718-44e8-8afd-540a51b15fea",
+      "name": "Prepare E-mail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d9b3ebc3-aae8-4fab-8de6-7470541594b3",
+              "leftValue": "={{ $json.should_process }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "78fdcf52-1af8-4ff7-8b5d-11f01160fc2b",
+      "name": "Skip Automated Mail",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Knowledge Base"
+        },
+        "options": {}
+      },
+      "id": "0e2f9552-4f82-40a8-8df1-9983477679e9",
+      "name": "Read Knowledge Base",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        880,
+        400
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Finds the most relevant knowledge-base articles for each e-mail (BM25 keyword search – no vector DB needed).\nconst TOP_K = 4;\nconst STOP = new Set(('a an the and or but if to of in on at for from by with about as is are was were be been it this that ' +\n  'i you we they he she my your our me us do does did can could would should will have has had not no yes hi hello ' +\n  'thanks thank please regards dear ve ile bir bu şu da de mi mı için ama çok daha merhaba teşekkürler lütfen ben siz biz').split(' '));\nconst tokenize = s => String(s || '').toLowerCase().normalize('NFKC')\n  .split(/[^\\p{L}\\p{N}]+/u).filter(t => t.length > 1 && !STOP.has(t));\n\nconst kb = $('Read Knowledge Base').all().map(i => i.json).filter(r => r && (r.question || r.answer));\nconst docs = kb.map((r, i) => {\n  const tokens = [...tokenize(r.question), ...tokenize(r.question), ...tokenize(r.keywords), ...tokenize(r.keywords),\n    ...tokenize(r.category), ...tokenize(r.answer)];\n  const tf = {};\n  for (const t of tokens) tf[t] = (tf[t] || 0) + 1;\n  return { id: String(r.id || 'KB-' + (i + 1)), row: r, tf, len: tokens.length };\n});\nconst N = docs.length;\nconst avgLen = N ? docs.reduce((a, d) => a + d.len, 0) / N : 1;\nconst df = {};\nfor (const d of docs) for (const t of Object.keys(d.tf)) df[t] = (df[t] || 0) + 1;\nconst k1 = 1.5, b = 0.75;\nconst bm25 = (qTokens, d) => {\n  let s = 0;\n  for (const t of new Set(qTokens)) {\n    const f = d.tf[t];\n    if (!f) continue;\n    const idf = Math.log(1 + (N - df[t] + 0.5) / (df[t] + 0.5));\n    s += idf * (f * (k1 + 1)) / (f + k1 * (1 - b + b * d.len / avgLen));\n  }\n  return s;\n};\n\n// iterate over the e-mails (the node's direct input is the knowledge-base rows)\nreturn $('Skip Automated Mail').all().map((item, idx) => {\n  const mail = item.json;\n  const q = tokenize(mail.subject + ' ' + mail.body);\n  const hits = docs.map(d => ({ d, score: bm25(q, d) }))\n    .filter(h => h.score > 0).sort((x, y) => y.score - x.score).slice(0, TOP_K);\n  const context = hits.map(h => [\n    `[${h.d.id}] ${h.d.row.question || ''}`,\n    String(h.d.row.answer || ''),\n    h.d.row.url ? 'More info: ' + h.d.row.url : '',\n  ].filter(Boolean).join('\\n')).join('\\n\\n');\n  return {\n    json: {\n      ...mail,\n      kb_article_ids: hits.map(h => h.d.id),\n      kb_top_score: hits.length ? Math.round(hits[0].score * 100) / 100 : 0,\n      kb_context: context || '(no matching articles)',\n    },\n    pairedItem: { item: idx },\n  };\n});\n"
+      },
+      "id": "ad3cc66c-74f1-49f2-b5e6-7a96cf1085c3",
+      "name": "Retrieve KB Articles",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const brand = $('⚙️ Support Settings').first().json;\n  return JSON.stringify({\n    model: 'gpt-4o-mini',\n    temperature: 0.2,\n    response_format: {\n      type: 'json_schema',\n      json_schema: {\n        name: 'support_triage',\n        strict: true,\n        schema: {\n          type: 'object',\n          additionalProperties: false,\n          required: ['category', 'urgency', 'sentiment', 'language', 'can_answer_from_kb', 'used_article_ids', 'confidence',\n                     'needs_human', 'needs_human_reason', 'reply_subject', 'reply_body', 'summary_for_agent'],\n          properties: {\n            category: { type: 'string', enum: ['order_status', 'shipping', 'returns_refunds', 'billing', 'technical', 'account',\n              'product_question', 'sales_inquiry', 'complaint', 'partnership', 'spam', 'other'] },\n            urgency: { type: 'string', enum: ['high', 'medium', 'low'] },\n            sentiment: { type: 'string', enum: ['positive', 'neutral', 'negative', 'angry'] },\n            language: { type: 'string', description: 'ISO 639-1 code of the customer e-mail' },\n            can_answer_from_kb: { type: 'boolean', description: 'true only if the knowledge base fully answers the question' },\n            used_article_ids: { type: 'array', items: { type: 'string' } },\n            confidence: { type: 'number', description: '0-1' },\n            needs_human: { type: 'boolean' },\n            needs_human_reason: { type: 'string' },\n            reply_subject: { type: 'string' },\n            reply_body: { type: 'string', description: 'Plain text reply to send to the customer' },\n            summary_for_agent: { type: 'string', description: 'One sentence for the support team' }\n          }\n        }\n      }\n    },\n    messages: [\n      { role: 'system', content:\n        'You are the customer support agent of ' + brand.company_name + '. ' + brand.company_description + '\\n' +\n        'Tone: ' + brand.tone + '\\n\\n' +\n        'RULES:\\n' +\n        '1. Answer ONLY with facts from the KNOWLEDGE BASE below. Never invent order numbers, delivery dates, prices, refunds or policies.\\n' +\n        '2. If the knowledge base does not fully answer the question, set can_answer_from_kb=false and write a short, kind reply ' +\n        'that confirms receipt, restates the request and says a team member will reply within ' + brand.response_time + '.\\n' +\n        '3. Never promise refunds, discounts or compensation; legal threats, chargebacks, safety issues or data-deletion requests -> needs_human=true.\\n' +\n        '4. Reply in the SAME language as the customer. Use the customer name if known. Max 160 words. No placeholders like [Order ID].\\n' +\n        '5. Sign as: ' + brand.signature + '\\n\\n' +\n        'KNOWLEDGE BASE:\\n' + $json.kb_context },\n      { role: 'user', content: 'From: ' + ($json.customer_name || '') + ' <' + $json.customer_email + '>\\nSubject: ' +\n        $json.subject + '\\n\\n' + $json.body }\n    ]\n  });\n})() }}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "id": "d3d32d99-5950-4774-b074-c2beb0845775",
+      "name": "AI: Triage & Draft Answer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        400
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// ===== CONFIG – the support policy =====\nconst CONFIG = {\n  autoSendEnabled: false,          // start in \"draft mode\"; switch on after a week of reviewing drafts\n  autoSendCategories: ['order_status', 'shipping', 'product_question', 'account'],\n  minConfidenceAutoSend: 0.9,\n  alwaysEscalateCategories: ['complaint', 'partnership'],\n  vipDomains: [],                  // e.g. ['bigclient.com'] – always escalated to a human\n  telegramOnHighUrgency: true,\n};\n\nreturn $input.all().map((item, idx) => {\n  const mail = $('Retrieve KB Articles').all()[idx].json;\n  let ai;\n  try {\n    ai = JSON.parse(item.json.choices[0].message.content);\n  } catch (e) {\n    ai = { category: 'other', urgency: 'medium', sentiment: 'neutral', language: 'en', can_answer_from_kb: false,\n      used_article_ids: [], confidence: 0, needs_human: true, needs_human_reason: 'AI response could not be parsed',\n      reply_subject: '', reply_body: '', summary_for_agent: mail.body.slice(0, 300) };\n  }\n\n  const escalateWhy = [];\n  if (ai.needs_human) escalateWhy.push(ai.needs_human_reason || 'AI asked for a human');\n  if (!ai.can_answer_from_kb) escalateWhy.push('Not covered by the knowledge base');\n  if (ai.sentiment === 'angry') escalateWhy.push('Angry customer');\n  if (CONFIG.telegramOnHighUrgency && ai.urgency === 'high') escalateWhy.push('High urgency');\n  if (CONFIG.alwaysEscalateCategories.includes(ai.category)) escalateWhy.push('Category: ' + ai.category);\n  if (CONFIG.vipDomains.includes(mail.customer_domain)) escalateWhy.push('VIP customer');\n\n  let action;\n  if (ai.category === 'spam') action = 'ignore';\n  else if (escalateWhy.length) action = 'escalate';\n  else if (CONFIG.autoSendEnabled && CONFIG.autoSendCategories.includes(ai.category)\n           && (Number(ai.confidence) || 0) >= CONFIG.minConfidenceAutoSend && ai.sentiment !== 'negative') action = 'auto_send';\n  else action = 'draft';\n\n  const subject = ai.reply_subject || (/^re:/i.test(mail.subject) ? mail.subject : 'Re: ' + mail.subject);\n  const alert = [\n    `🚨 Support e-mail needs a human (${ai.urgency} urgency, ${ai.sentiment})`,\n    '',\n    `From: ${mail.customer_name ? mail.customer_name + ' <' + mail.customer_email + '>' : mail.customer_email}`,\n    `Subject: ${mail.subject}`,\n    `Category: ${ai.category}`,\n    '',\n    `Summary: ${ai.summary_for_agent || ''}`,\n    '',\n    'Why escalated:',\n    ...[...new Set(escalateWhy)].map(r => '• ' + r),\n    '',\n    '✍️ A suggested reply is in Gmail drafts – review, edit, send.',\n  ].join('\\n').slice(0, 3900);\n\n  return {\n    json: {\n      ...mail,\n      category: ai.category,\n      urgency: ai.urgency,\n      sentiment: ai.sentiment,\n      language: ai.language,\n      can_answer_from_kb: !!ai.can_answer_from_kb,\n      used_article_ids: (ai.used_article_ids || []).join(', '),\n      ai_confidence: Number(ai.confidence) || 0,\n      summary_for_agent: ai.summary_for_agent || '',\n      reply_subject: subject,\n      reply_body: ai.reply_body || '',\n      action,\n      escalation_reasons: [...new Set(escalateWhy)].join(' | '),\n      telegram_alert: alert,\n    },\n    pairedItem: { item: idx },\n  };\n});\n"
+      },
+      "id": "d12bedca-403f-4959-884f-47f413d59209",
+      "name": "Decide Action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "ef4398d4-2cef-4a83-ac56-e81eee12454e",
+                    "leftValue": "={{ $json.action }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "auto_send"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "auto_send"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "37ca35bc-2e10-4f0f-9250-9bb93026f8bb",
+                    "leftValue": "={{ $json.action }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "draft"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "draft"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "3e4cbc9a-1911-423f-8358-b3473b5874cb",
+                    "leftValue": "={{ $json.action }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "escalate"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "escalate"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "556e6a88-9699-47cc-b301-ecf2e62a3e84",
+      "name": "Route",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1760,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "reply",
+        "messageId": "={{ $('Decide Action').item.json.message_id }}",
+        "emailType": "text",
+        "message": "={{ $('Decide Action').item.json.reply_body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "97778574-19bf-4f89-8c43-f7a1335c8f73",
+      "name": "Gmail: Send Reply",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2000,
+        200
+      ],
+      "webhookId": "a68758e3-4f56-4318-9db4-5ed2b0133173"
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "subject": "={{ $('Decide Action').item.json.reply_subject }}",
+        "emailType": "text",
+        "message": "={{ $('Decide Action').item.json.reply_body }}",
+        "options": {
+          "threadId": "={{ $('Decide Action').item.json.thread_id }}",
+          "sendTo": "={{ $('Decide Action').item.json.customer_email }}"
+        }
+      },
+      "id": "6739b84d-30bc-4838-a6fc-ebc1d3b77fc7",
+      "name": "Gmail: Save Reply as Draft",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2000,
+        400
+      ],
+      "webhookId": "43970090-f891-440b-9316-7ca3467b160e"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $('Decide Action').item.json.telegram_alert }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "a8545961-1fa5-41f1-aff5-7af553ac7c19",
+      "name": "Telegram: Alert Support Team",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2000,
+        600
+      ],
+      "webhookId": "bf518f49-8853-4f0d-889a-a073d4277cd6"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// One row per handled e-mail in the \"Support Log\" sheet (columns must match its header row).\nconst d = $('Decide Action').item.json;\nconst COLUMNS = ['received_at', 'customer_email', 'customer_name', 'subject', 'category', 'urgency', 'sentiment',\n  'language', 'action', 'escalation_reasons', 'can_answer_from_kb', 'used_article_ids', 'ai_confidence',\n  'summary_for_agent', 'reply_body', 'message_id', 'thread_id'];\nconst row = {};\nfor (const c of COLUMNS) row[c] = d[c] == null ? '' : d[c];\nrow.handled_at = new Date().toISOString();\nreturn { json: row };\n"
+      },
+      "id": "b1aa51f9-3bf0-4a10-a464-168d183495b2",
+      "name": "Shape Log Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Support Log"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "53b063f7-af8e-4831-a97c-223f6cfa5fa9",
+      "name": "Append to Support Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 💬 AI Customer Support Agent\nReads every new support e-mail, finds the right answers in **your** knowledge base and writes the reply in the customer's language.\n\n✅ Simple, covered questions → reply sent automatically *(off by default – starts in draft mode)*\n✍️ Everything else → ready-to-send draft in the same Gmail thread\n🚨 Angry / urgent / VIP / not covered → Telegram alert to the team + draft\n📊 Every e-mail logged to Google Sheets (category, sentiment, action)",
+        "height": 290,
+        "width": 720,
+        "color": 4
+      },
+      "id": "af8a45d5-197b-4125-b527-b7d47dd6ea86",
+      "name": "Note 1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -70
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### ⚙️ Setup (15 min)\n1. Connect Gmail (trigger + 2 Gmail nodes), OpenAI, Google Sheets, Telegram.\n2. Google Sheet with two tabs: **Knowledge Base** (`id, category, question, answer, keywords, url`) and **Support Log** (header row in README). A sample knowledge base is included.\n3. Edit **⚙️ Support Settings** (brand, tone, signature) and the domains in **Prepare E-mail**.\n4. Review drafts for a week, then set `autoSendEnabled: true` in **Decide Action**.",
+        "height": 290,
+        "width": 700,
+        "color": 6
+      },
+      "id": "758a77d1-b34d-4e27-b2ff-a8fe27aefa1d",
+      "name": "Note 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        720,
+        -70
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 🛡 Guardrails\nThe AI may only use knowledge-base facts, never promises refunds or dates, and hands legal threats, chargebacks and data requests to a human. Newsletters, auto-replies, no-reply senders and internal mail are skipped.",
+        "height": 200,
+        "width": 520,
+        "color": 5
+      },
+      "id": "d5125275-b93f-48e2-a5bd-252a95736de9",
+      "name": "Note 3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1460,
+        -20
+      ]
+    }
+  ],
+  "connections": {
+    "Gmail: New Support E-mail": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Support Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ Support Settings": {
+      "main": [
+        [
+          {
+            "node": "Prepare E-mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare E-mail": {
+      "main": [
+        [
+          {
+            "node": "Skip Automated Mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Automated Mail": {
+      "main": [
+        [
+          {
+            "node": "Read Knowledge Base",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Knowledge Base": {
+      "main": [
+        [
+          {
+            "node": "Retrieve KB Articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retrieve KB Articles": {
+      "main": [
+        [
+          {
+            "node": "AI: Triage & Draft Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Triage & Draft Answer": {
+      "main": [
+        [
+          {
+            "node": "Decide Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide Action": {
+      "main": [
+        [
+          {
+            "node": "Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Send Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail: Save Reply as Draft",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail: Save Reply as Draft",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram: Alert Support Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Send Reply": {
+      "main": [
+        [
+          {
+            "node": "Shape Log Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Save Reply as Draft": {
+      "main": [
+        [
+          {
+            "node": "Shape Log Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shape Log Row": {
+      "main": [
+        [
+          {
+            "node": "Append to Support Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
