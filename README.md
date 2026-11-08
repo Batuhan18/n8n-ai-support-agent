@@ -4,6 +4,8 @@ Answers your support inbox from your own knowledge base, in the customer's langu
 
 ![Workflow](n8n-workflow-screenshot.png)
 
+🎬 **Demo video (2 min, English voiceover):** [demo.mp4](demo.mp4)
+
 ## What it does
 
 1. **Watches your support inbox** (Gmail).
